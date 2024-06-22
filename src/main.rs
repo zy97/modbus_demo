@@ -59,16 +59,11 @@ fn get_router() -> Router {
         .build()
         .unwrap(),
     );
-    let contexts = Contexts {
-        // context1: Pool1::builder(Context1 {}).build().unwrap(),
-        // context2: Pool2::builder(Context2 {}).build().unwrap(),
-        contexts: hash,
-    };
-    let router = Router::new().hoop(affix::inject(contexts)).push(
-        Router::with_path("location")
-            .push(Router::with_path("getall").get(locations))
-            .push(Router::with_path("<location>").get(location)),
-    );
+    let contexts = Contexts { contexts: hash };
+    let router = Router::with_path("location")
+        .hoop(affix::inject(contexts))
+        .push(Router::with_path("getall").get(locations))
+        .push(Router::with_path("<location>").get(location));
     router
 }
 #[handler]

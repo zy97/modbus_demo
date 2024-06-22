@@ -73,12 +73,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "async_once"
-version = "0.2.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2ce4f10ea3abcd6617873bae9f91d1c5332b4a778bd9ce34d0cd517474c1de82"
-
-[[package]]
 name = "atomic-waker"
 version = "1.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -245,12 +239,6 @@ checksum = "0369ee1ad671834580515889b80f2ea915f23b8be8d0daa4bbaf2ac5c7590835"
 dependencies = [
  "cipher",
 ]
-
-[[package]]
-name = "data-encoding"
-version = "2.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e8566979429cf69b49a5c740c60791108e86440e8be149bbea4fe54d2c32d6e2"
 
 [[package]]
 name = "deadpool"
@@ -948,7 +936,6 @@ dependencies = [
 name = "modbus"
 version = "0.1.0"
 dependencies = [
- "async_once",
  "deadpool",
  "lazy_static",
  "salvo",
@@ -956,7 +943,6 @@ dependencies = [
  "tokio",
  "tokio-macros",
  "tokio-modbus",
- "tokio-tungstenite",
  "tracing",
  "tracing-subscriber",
 ]
@@ -2144,12 +2130,8 @@ checksum = "6e2e2ce1e47ed2994fd43b04c8f618008d4cabdd5ee34027cf14f9d918edd9c8"
 dependencies = [
  "byteorder",
  "bytes",
- "data-encoding",
- "http",
- "httparse",
  "log",
  "rand",
- "sha1",
  "thiserror",
  "utf-8",
 ]
