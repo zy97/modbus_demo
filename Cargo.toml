@@ -1,0 +1,17 @@
+[package]
+name = "modbus"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+salvo = {version = "0.68.2",features =["salvo_extra","affix"]}
+tokio = { version = "1.38.0", features = ["macros"] }
+tokio-macros = "~2.3.0"
+tokio-modbus = { version = "*", default-features = false, features = ["tcp"] }
+lazy_static = "1.4.0"
+serde ={version = "1.0.203",features = ["derive"]}
+tracing = "0.1.40"
+tracing-subscriber = "0.3.18"
+async_once = "0.2.6"
+deadpool = "0.12.1"
+tokio-tungstenite = "0.23.1"
