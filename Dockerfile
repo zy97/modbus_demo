@@ -36,7 +36,7 @@
 # ENTRYPOINT ["/app/modbus"]
 
 # Build Stage
-FROM rust:alpine as builder
+FROM rust:latest as builder
 
 # Encourage some layer caching here rather then copying entire directory that includes docs to builder container ~CMN
 WORKDIR /app/modbus
@@ -45,8 +45,11 @@ COPY src/ src/
 RUN cargo build --release
 
 # Release Stage
-FROM alpine:3.20.0 as release
+# FROM alpine:3.20.0 as release
+# FROM debian:buster-slim
+FROM debian:bookworm-slim
 
 COPY --from=builder /app/modbus/target/release/modbus ./modbus
 
+EXPOSE 5800
 ENTRYPOINT [ "./modbus" ]
