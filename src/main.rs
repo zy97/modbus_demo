@@ -1,5 +1,5 @@
 use client::Context;
-use deadpool::managed::{self, Manager, Object};
+use deadpool::managed::{self, Object};
 use salvo::{affix, prelude::*, server::ServerHandle, Request};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, net::SocketAddr, time::Duration};
@@ -135,29 +135,6 @@ lazy_static! {
         );
         m
     };
-    static ref POOLS: Contexts = {
-        let mut hash = HashMap::new();
-        hash.insert(
-            IP1.to_string(),
-            Pool::builder(ModbusContext {
-                ip: IP1.to_string(),
-                port: 2000,
-            })
-            .build()
-            .unwrap(),
-        );
-        hash.insert(
-            IP2.to_string(),
-            Pool::builder(ModbusContext {
-                ip: IP2.to_string(),
-                port: 2000,
-            })
-            .build()
-            .unwrap(),
-        );
-        let contexts = Contexts { contexts: hash };
-        contexts
-    };
 }
 
 #[tokio::main]
@@ -261,34 +238,8 @@ async fn locations(
         }
         let (ip, reg, alias) = info.unwrap();
         let pool = contexts.contexts.get(&ip.to_string()).unwrap();
-        // info!("起始状态：{:#?}", pool.status());
         let context = pool.get().await.ok();
-        results.push(
-            get_value1(
-                context,
-                alias.to_string(),
-                location,
-                reg.to_owned(),
-                ip.to_string(),
-            )
-            .await,
-        );
-        // info!("获取池之后状态：{:#?}", pool.status());
-        // results.push(
-        //     get_value(
-        //         context.as_deref_mut(),
-        //         alias.to_string(),
-        //         location,
-        //         reg.to_owned(),
-        //         ip.to_string(),
-        //     )
-        //     .await
-        //     .0,
-        // );
-        // let a = Object::take(context.unwrap());
-        // drop(context);
-        // pool.close();
-        // pool.resize(1);
+        results.push(get_value(context, alias, location, reg.to_owned()).await);
     }
 
     Ok(Json(results))
@@ -297,128 +248,65 @@ async fn locations(
 #[handler]
 async fn get_all_locations(depot: &mut Depot) -> Result<Json<Vec<LocationAvailable>>, String> {
     let mut results = vec![];
-    let mut hash = HashMap::new();
-    let mut reconnect = vec![];
+    let contexts = depot.obtain::<Contexts>().unwrap();
     for (loc, (ip, reg, alias)) in CAN_TAKE_LOCATION.iter() {
-        if !hash.contains_key(ip) {
-            let ab = POOLS.contexts.get(&ip.to_string()).unwrap();
-            let context = ab.get().await.ok();
-            hash.insert(ip, context);
-        }
-        let context = hash.get_mut(ip).unwrap();
-        let data = get_value(
-            context.as_deref_mut(),
-            alias.to_string(),
-            loc.to_string(),
-            reg.to_owned(),
-            ip.to_string(),
-        )
-        .await;
-        if data.1 .1 == true {
-            reconnect.push(data.1)
-        }
-        results.push(data.0);
+        let pool = contexts.contexts.get(&ip.to_string()).unwrap();
+        let context = pool.get().await.ok();
+        let data = get_value(context, alias, loc.to_string(), reg.to_owned()).await;
+        results.push(data);
     }
-    reconnect.dedup();
-    for (ip, pool) in POOLS.contexts.clone() {
-        let a = pool.get().await.unwrap();
-        info!("关闭前的状态：{:#?}", pool.status());
-        drop(a);
-        info!("关闭后的状态：{:#?}", pool.status());
-    }
-    // for con in reconnect {
-    //     let c = POOLS.contexts.get(&con.0).unwrap();
-    //     info!("状态：{:#?}", c.status());
-    //     drop(c);
-    //     info!("关闭后的状态：{:#?}", c.status());
-    // }
+
     Ok(Json(results))
 }
-async fn get_value(
-    context: Option<&mut Context>,
-    alias: String,
-    loc: String,
-    reg: u16,
-    ip: String,
-) -> (LocationAvailable, (String, bool)) {
-    match context {
-        Some(context) => {
-            let c = context.read_holding_registers(reg.to_owned(), 1).await;
-            if let Ok(d) = c {
-                (
-                    LocationAvailable {
-                        alias: alias.to_string(),
-                        location: loc.to_string(),
-                        is_available: Some(d[0] == 6),
-                    },
-                    (ip, false),
-                )
-            } else {
-                info!("不能读取数据从地址{}", reg);
-                (
-                    LocationAvailable {
-                        alias: alias.to_string(),
-                        location: loc.to_string(),
-                        is_available: Some(false),
-                    },
-                    (ip, true),
-                )
-            }
-        }
-        None => (
-            LocationAvailable {
-                alias: alias.to_string(),
-                location: loc.to_string(),
-                is_available: None,
-            },
-            (ip, true),
-        ),
-    }
-}
 
-async fn get_value1(
+async fn get_value<S, T>(
     context: Option<Object<ModbusContext>>,
-    alias: String,
-    loc: String,
-    reg: u16,
-    ip: String,
-) -> LocationAvailable {
+    alias: S,
+    location: T,
+    register: u16,
+) -> LocationAvailable
+where
+    S: AsRef<str>,
+    T: AsRef<str>,
+{
+    let alias = alias.as_ref().to_string();
+    let location = location.as_ref().to_string();
     match context {
         Some(mut context) => {
             match timeout(
                 Duration::from_millis(1000),
-                context.read_holding_registers(reg.to_owned(), 1),
+                context.read_holding_registers(register.to_owned(), 1),
             )
             .await
             {
                 Ok(Ok(data)) => LocationAvailable {
-                    alias: alias.to_string(),
-                    location: loc.to_string(),
+                    alias,
+                    location,
                     is_available: Some(data[0] == 6),
                 },
                 Ok(Err(err)) => {
-                    info!("不能读取数据从地址{}", reg);
+                    info!("不能读取数据从地址{},{}", register, err);
                     let _ = Object::take(context);
                     LocationAvailable {
-                        alias: alias.to_string(),
-                        location: loc.to_string(),
+                        alias,
+                        location,
                         is_available: Some(false),
                     }
                 }
                 Err(err) => {
-                    info!("超时");
+                    info!("超时.{}", err);
                     let _ = Object::take(context);
                     LocationAvailable {
-                        alias: alias.to_string(),
-                        location: loc.to_string(),
+                        alias,
+                        location,
                         is_available: None,
                     }
                 }
             }
         }
         None => LocationAvailable {
-            alias: alias.to_string(),
-            location: loc.to_string(),
+            alias,
+            location,
             is_available: None,
         },
     }
