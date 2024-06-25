@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 salvo = {version = "0.68.2",features =["affix"]}
-tokio = { version = "1.38.0", features = ["macros"] }
+tokio = { version = "1.38.0", features = ["macros","signal"] }
 tokio-modbus = { version = "*", default-features = false, features = ["tcp"] }
 lazy_static = "1.4.0"
 serde ={version = "1.0.203",features = ["derive"]}
