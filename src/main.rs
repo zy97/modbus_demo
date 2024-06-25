@@ -14,11 +14,11 @@ extern crate lazy_static;
 lazy_static! {
     static ref CAN_TAKE_LOCATION: HashMap<&'static str, (&'static str, u16, &'static str)> = {
         let mut m = HashMap::new();
-        // m.insert("5504-1-1-1", (IP1, 5, "翻包区出口"));
-        // m.insert("5106-1-1-1", (IP1, 3, "一楼流水线出口"));
+        m.insert("5504-1-1-1", (IP1, 5, "翻包区出口"));
+        m.insert("5106-1-1-1", (IP1, 3, "一楼流水线出口"));
         m.insert("5101-1-1-1", (IP1, 2, "二楼流水线靠近机房入口"));
-        // m.insert("5102-1-1-1", (IP1, 1, "二楼流水线远离机房入口"));
-        // m.insert("5105-1-1-1", (IP2, 1, "成品流水线出口"));
+        m.insert("5102-1-1-1", (IP1, 1, "二楼流水线远离机房入口"));
+        m.insert("5105-1-1-1", (IP2, 1, "成品流水线出口"));
         m
     };
     static ref CAN_PUT_DOWN_LOCATIONS: HashMap<&'static str, (&'static str, u16, &'static str, &'static str)> = {
@@ -261,33 +261,34 @@ async fn locations(
         }
         let (ip, reg, alias) = info.unwrap();
         let pool = contexts.contexts.get(&ip.to_string()).unwrap();
-        info!("起始状态：{:#?}", pool.status());
-        let mut context = pool.get().await.ok();
-        get_value1(
-            context,
-            alias.to_string(),
-            location,
-            reg.to_owned(),
-            ip.to_string(),
-        );
-        info!("获取池之后状态：{:#?}", pool.status());
+        // info!("起始状态：{:#?}", pool.status());
+        let context = pool.get().await.ok();
         results.push(
-            get_value(
-                context.as_deref_mut(),
+            get_value1(
+                context,
                 alias.to_string(),
                 location,
                 reg.to_owned(),
                 ip.to_string(),
             )
-            .await
-            .0,
+            .await,
         );
-        let a = Object::take(context.unwrap());
+        // info!("获取池之后状态：{:#?}", pool.status());
+        // results.push(
+        //     get_value(
+        //         context.as_deref_mut(),
+        //         alias.to_string(),
+        //         location,
+        //         reg.to_owned(),
+        //         ip.to_string(),
+        //     )
+        //     .await
+        //     .0,
+        // );
+        // let a = Object::take(context.unwrap());
         // drop(context);
         // pool.close();
         // pool.resize(1);
-
-        info!("释放池之后状态：{:#?}", pool.status());
     }
 
     Ok(Json(results))
@@ -381,39 +382,45 @@ async fn get_value1(
     loc: String,
     reg: u16,
     ip: String,
-) -> (LocationAvailable, (String, bool)) {
+) -> LocationAvailable {
     match context {
         Some(mut context) => {
-            let c = context.read_holding_registers(reg.to_owned(), 1).await;
-            if let Ok(d) = c {
-                (
-                    LocationAvailable {
-                        alias: alias.to_string(),
-                        location: loc.to_string(),
-                        is_available: Some(d[0] == 6),
-                    },
-                    (ip, false),
-                )
-            } else {
-                info!("不能读取数据从地址{}", reg);
-                (
+            match timeout(
+                Duration::from_millis(1000),
+                context.read_holding_registers(reg.to_owned(), 1),
+            )
+            .await
+            {
+                Ok(Ok(data)) => LocationAvailable {
+                    alias: alias.to_string(),
+                    location: loc.to_string(),
+                    is_available: Some(data[0] == 6),
+                },
+                Ok(Err(err)) => {
+                    info!("不能读取数据从地址{}", reg);
+                    let _ = Object::take(context);
                     LocationAvailable {
                         alias: alias.to_string(),
                         location: loc.to_string(),
                         is_available: Some(false),
-                    },
-                    (ip, true),
-                )
+                    }
+                }
+                Err(err) => {
+                    info!("超时");
+                    let _ = Object::take(context);
+                    LocationAvailable {
+                        alias: alias.to_string(),
+                        location: loc.to_string(),
+                        is_available: None,
+                    }
+                }
             }
         }
-        None => (
-            LocationAvailable {
-                alias: alias.to_string(),
-                location: loc.to_string(),
-                is_available: None,
-            },
-            (ip, true),
-        ),
+        None => LocationAvailable {
+            alias: alias.to_string(),
+            location: loc.to_string(),
+            is_available: None,
+        },
     }
 }
 
@@ -443,7 +450,7 @@ impl managed::Manager for ModbusContext {
     async fn create(&self) -> Result<Context, Error> {
         let addr = format!("{}:{}", self.ip, self.port);
         let socket_addr = addr.parse::<SocketAddr>().unwrap();
-        match timeout(Duration::from_millis(100), tcp::connect(socket_addr)).await {
+        match timeout(Duration::from_millis(1000), tcp::connect(socket_addr)).await {
             Ok(Ok(context)) => {
                 info!("连接到{}:{}", self.ip, self.port);
                 Ok(context)
