@@ -6,11 +6,12 @@ edition = "2021"
 [dependencies]
 # salvo = {version = "0.68.2",features =["affix"]}
 # tokio = { version = "1.38.0", features = ["macros","signal"] }
+# lazy_static = "1.5.0"
 tokio-modbus = { version = "0.16.1", default-features = false, features = ["tcp"] }
-lazy_static = "1.5.0"
 serde ={version = "1.0.216",features = ["derive"]}
 tracing = "0.1.41"
 tracing-appender = "0.2.3"
 tracing-subscriber = "0.3.19"
 deadpool = "0.12.1"
 actix-web = "4.9.0"
+config = {version = "0.15.4",features =["toml"]}

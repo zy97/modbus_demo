@@ -7,13 +7,15 @@ use tokio::{signal, time::timeout};
 use tokio_modbus::prelude::*;
 use tracing::info;
 use tracing_subscriber::FmtSubscriber;
-static IP1: &'static str = "192.168.70.100";
+static IP1: &'static str = "127.0.0.1";
 static IP2: &'static str = "192.168.70.102";
 #[macro_use]
 extern crate lazy_static;
 lazy_static! {
     static ref CAN_TAKE_LOCATION: HashMap<&'static str, (&'static str, u16, &'static str)> = {
         let mut m = HashMap::new();
+        m.insert("0", (IP1, 0, "test"));
+
         m.insert("5504-1-1-1", (IP1, 5, "翻包区出口"));
         m.insert("5106-1-1-1", (IP1, 3, "一楼流水线出口"));
         m.insert("5101-1-1-1", (IP1, 2, "二楼流水线靠近机房入口"));
@@ -143,7 +145,7 @@ async fn main() {
         .with_max_level(tracing::Level::INFO)
         .finish();
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
-    let acceptor = TcpListener::new("0.0.0.0:5800").bind().await;
+    let acceptor = TcpListener::new("127.0.0.1:8080").bind().await;
     let router = get_router();
     println!("{:?}", router);
     let server = Server::new(acceptor);
@@ -157,7 +159,7 @@ fn get_router() -> Router {
         IP1.to_string(),
         Pool::builder(ModbusContext {
             ip: IP1.to_string(),
-            port: 2000,
+            port: 5522,
         })
         .max_size(1)
         .build()
@@ -274,16 +276,20 @@ where
     match context {
         Some(mut context) => {
             match timeout(
-                Duration::from_millis(1000),
-                context.read_holding_registers(register.to_owned(), 1),
+                Duration::from_millis(2000),
+                context.read_holding_registers(0, 20),
             )
             .await
             {
-                Ok(Ok(data)) => LocationAvailable {
-                    alias,
-                    location,
-                    is_available: Some(data[0] == 6),
-                },
+                Ok(Ok(data)) => {
+                    let data = data.unwrap();
+                    info!("数据：{:?}", data);
+                    LocationAvailable {
+                        alias,
+                        location,
+                        is_available: Some(true),
+                    }
+                }
                 Ok(Err(err)) => {
                     info!("不能读取数据从地址{},{}", register, err);
                     let _ = Object::take(context);
@@ -338,7 +344,13 @@ impl managed::Manager for ModbusContext {
     async fn create(&self) -> Result<Context, Error> {
         let addr = format!("{}:{}", self.ip, self.port);
         let socket_addr = addr.parse::<SocketAddr>().unwrap();
-        match timeout(Duration::from_millis(1000), tcp::connect(socket_addr)).await {
+        let salve = Slave(1);
+        match timeout(
+            Duration::from_millis(1000),
+            tcp::connect_slave(socket_addr, salve),
+        )
+        .await
+        {
             Ok(Ok(context)) => {
                 info!("连接到{}:{}", self.ip, self.port);
                 Ok(context)
