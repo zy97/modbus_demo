@@ -5,9 +5,10 @@ use std::{net::SocketAddr, time::Duration};
 use tokio_modbus::prelude::*;
 use tracing::{debug, error, info};
 pub type Pool = managed::Pool<ModbusContext>;
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ModbusContext {
     pub addr: String,
+    pub slave: u8,
 }
 #[derive(Debug)]
 pub enum Error {
@@ -21,7 +22,7 @@ impl managed::Manager for ModbusContext {
         let socket_addr = self.addr.parse::<SocketAddr>().unwrap();
         match timeout(
             Duration::from_millis(1000),
-            tcp::connect_slave(socket_addr, Slave(1)),
+            tcp::connect_slave(socket_addr, Slave(self.slave)),
         )
         .await
         {
@@ -45,14 +46,15 @@ impl managed::Manager for ModbusContext {
             true => Ok(()),
             _ => {
                 conn.disconnect().await.unwrap();
-                info!("断开连接成功！");
                 Err(RecycleError::Message(std::borrow::Cow::Borrowed(
                     "can't recycle",
                 )))
             }
         }
     }
-    fn detach(&self, _obj: &mut Self::Type) {}
+    fn detach(&self, _obj: &mut Self::Type) {
+        info!("断开连接成功！");
+    }
 }
 impl ModbusContext {}
 

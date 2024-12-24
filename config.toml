@@ -4,8 +4,5 @@ address = "127.0.0.1:8080"
 # [modbus]
 # addresses = ["127.0.0.1:5522"]
 
-
 [modbus]
-configs = [
-    { address = "127.0.0.1:5522" },
-]
+configs = [{ address = "127.0.0.1:5522", slave_id = 1, name = "main" }]

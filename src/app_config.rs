@@ -8,6 +8,8 @@ pub struct ServerConfig {
 #[derive(Debug, Deserialize)]
 pub struct Modbus {
     pub address: String,
+    pub slave_id: u8,
+    pub name: String,
 }
 
 #[derive(Debug, Deserialize)]
