@@ -2,8 +2,12 @@ mod app_config;
 mod modbus_manager;
 mod otlp;
 mod server_router;
+mod trace_middleware;
+use actix_web::dev::Service;
+use actix_web::middleware::from_fn;
 use actix_web::{middleware, web, App, HttpServer};
 use app_config::{load_config, AppConfig};
+use futures_util::FutureExt as _;
 use modbus_manager::{ModbusContext, Pool};
 use opentelemetry::global;
 use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
@@ -13,6 +17,7 @@ use otlp::{init_logs, init_traces};
 use server_router::{get_modbus_value, greet};
 use std::fmt::Error;
 use std::{collections::HashMap, sync::LazyLock};
+use trace_middleware::trace_middleware;
 use tracing::{debug, info};
 use tracing_subscriber::fmt;
 use tracing_subscriber::layer::SubscriberExt;
@@ -27,6 +32,7 @@ static APP_CONFIG: LazyLock<AppConfig> = LazyLock::new(|| {
 #[actix_web::main] // or #[tokio::main]
 async fn main() -> std::io::Result<()> {
     global::set_text_map_propagator(TraceContextPropagator::new());
+    global::set_tracer_provider(init_traces().unwrap());
     let logger_provider = init_log().unwrap();
     let pools: HashMap<String, Pool> = APP_CONFIG
         .modbus
@@ -37,7 +43,7 @@ async fn main() -> std::io::Result<()> {
                 addr: config.address.to_string(),
                 slave: config.slave_id,
             };
-            let modbus_pool = Pool::builder(mgr).max_size(50).build().unwrap();
+            let modbus_pool = Pool::builder(mgr).max_size(1).build().unwrap();
             (config.name.clone(), modbus_pool)
         })
         .collect();
@@ -50,6 +56,7 @@ async fn main() -> std::io::Result<()> {
             .service(greet)
             .service(get_modbus_value)
             .wrap(middleware::Logger::default())
+            .wrap(from_fn(trace_middleware))
     })
     .bind(server_url)?
     .run()
