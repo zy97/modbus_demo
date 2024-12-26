@@ -12,6 +12,7 @@ use otlp::{init_logs, init_traces};
 use server_router::{get_modbus_value, greet};
 use std::{collections::HashMap, sync::LazyLock};
 use tracing::{debug, info};
+use tracing_subscriber::fmt;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::{fmt::Layer, layer::SubscriberExt, FmtSubscriber};
@@ -40,20 +41,23 @@ async fn main() -> std::io::Result<()> {
         .with_thread_names(true)
         .with_filter(filter_fmt);
 
-    tracing_subscriber::registry()
-        .with(otel_layer)
-        .with(fmt_layer)
-        .init();
     let file_appender = tracing_appender::rolling::daily("logs", "app.log");
     let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
     // 创建一个文件输出层
-    let file_layer = Layer::new().with_writer(non_blocking); // 输出到文件
+    // let file_layer = Layer::new().with_writer(non_blocking); // 输出到文件
+    let file_layer = fmt::layer()
+        .with_writer(non_blocking)
+        .with_filter(EnvFilter::new("info"));
+    // let subscriber = FmtSubscriber::builder()
+    //     .with_max_level(tracing::Level::DEBUG)
+    //     .finish()
+    //     .with(file_layer);
 
-    let subscriber = FmtSubscriber::builder()
-        .with_max_level(tracing::Level::DEBUG)
-        .finish()
-        .with(file_layer);
-
+    tracing_subscriber::registry()
+        .with(otel_layer)
+        .with(fmt_layer)
+        .with(file_layer)
+        .init();
     // tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
     let pools: HashMap<String, Pool> = APP_CONFIG
