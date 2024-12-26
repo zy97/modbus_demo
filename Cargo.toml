@@ -1,19 +1,18 @@
 [package]
+edition = "2021"
 name = "modbus"
 version = "0.1.0"
-edition = "2021"
 
 [dependencies]
-# salvo = {version = "0.68.2",features =["affix"]}
-# tokio = { version = "1.38.0", features = ["macros","signal"] }
-# lazy_static = "1.5.0"
+actix-web = "4.9.0"
+config = { version = "0.15.4", features = ["toml"] }
 deadpool = { version = "0.12.1", default-features = false, features = [
     "managed",
 ] }
+serde = { version = "1.0.216", features = ["derive"] }
 tokio-modbus = { version = "0.16.1", default-features = false, features = [
     "tcp",
 ] }
-serde = { version = "1.0.216", features = ["derive"] }
 tracing = { version = "0.1.41", features = ["std"] }
 tracing-appender = "0.2.3"
 tracing-subscriber = { version = "0.3.19", features = [
@@ -21,17 +20,10 @@ tracing-subscriber = { version = "0.3.19", features = [
     "std",
     "env-filter",
 ] }
-actix-web = "4.9.0"
-config = { version = "0.15.4", features = ["toml"] }
-
-actix-web-opentelemetry = { version = "0.19.0", features = [
-    "metrics-prometheus",
-    "sync-middleware",
-    "awc",
-] }
-opentelemetry = "0.27.1"
-opentelemetry_sdk = { version = "0.27.1", features = ["logs", "rt-tokio"] }
-opentelemetry-otlp = { version = "0.27.0", features = ["default"] }
-tracing-opentelemetry = "0.28.0"
+opentelemetry = "0.27.0"
+opentelemetry-otlp = { version = "0.27.0" }
+# actix-web-opentelemetry = { version = "0.19.0" } #支持的actix-web和opentelemetry版本太低不能发送trace
 opentelemetry-appender-tracing = "0.27.0"
-opentelemetry-stdout = "0.27.0"
+opentelemetry_sdk = { version = "0.27.0", features = [
+    "rt-tokio-current-thread",
+] }

@@ -3,22 +3,15 @@ mod modbus_manager;
 mod otlp;
 mod server_router;
 use actix_web::{middleware, web, App, HttpServer};
-use actix_web_opentelemetry::{PrometheusMetricsHandler, RequestMetrics, RequestTracing};
 use app_config::{load_config, AppConfig};
 use modbus_manager::{ModbusContext, Pool};
-use opentelemetry::InstrumentationScope;
-use opentelemetry::{global, KeyValue};
-use opentelemetry_appender_tracing::layer::{self, OpenTelemetryTracingBridge};
-use opentelemetry_otlp::{TonicExporterBuilder, WithExportConfig};
-use opentelemetry_sdk::Resource;
-use otlp::init_logs;
-use otlp::init_metrics;
-use otlp::init_traces;
+use opentelemetry::global;
+use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
+use opentelemetry_sdk::propagation::TraceContextPropagator;
+use otlp::{init_logs, init_traces};
 use server_router::{get_modbus_value, greet};
 use std::{collections::HashMap, sync::LazyLock};
-use tracing::instrument::WithSubscriber;
 use tracing::{debug, info};
-use tracing_opentelemetry::layer;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::{fmt::Layer, layer::SubscriberExt, FmtSubscriber};
@@ -31,6 +24,7 @@ static APP_CONFIG: LazyLock<AppConfig> = LazyLock::new(|| {
 
 #[actix_web::main] // or #[tokio::main]
 async fn main() -> std::io::Result<()> {
+    global::set_text_map_propagator(TraceContextPropagator::new());
     let logger_provider = init_logs().unwrap();
     let otel_layer = OpenTelemetryTracingBridge::new(&logger_provider);
     let filter_otel = EnvFilter::new("info")
@@ -46,19 +40,10 @@ async fn main() -> std::io::Result<()> {
         .with_thread_names(true)
         .with_filter(filter_fmt);
 
-    let tracer_provider = init_traces().unwrap();
-    global::set_tracer_provider(tracer_provider.clone());
-    let meter_provider = init_metrics().unwrap();
-    global::set_meter_provider(meter_provider.clone());
-    let common_scope_attributes = vec![KeyValue::new("scope-key", "scope-value")];
-    let scope = InstrumentationScope::builder("basic")
-        .with_version("1.0")
-        .with_attributes(common_scope_attributes)
-        .build();
-
-    let tracer = global::tracer_with_scope(scope.clone());
-    let meter = global::meter_with_scope(scope);
-
+    tracing_subscriber::registry()
+        .with(otel_layer)
+        .with(fmt_layer)
+        .init();
     let file_appender = tracing_appender::rolling::daily("logs", "app.log");
     let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
     // 创建一个文件输出层
@@ -69,15 +54,7 @@ async fn main() -> std::io::Result<()> {
         .finish()
         .with(file_layer);
 
-    tracing_subscriber::registry()
-        .with(otel_layer)
-        .with(fmt_layer)
-        // .with_subscriber(subscriber)
-        .init()
-        .with_subscriber(subscriber)
-        .dispatcher();
     // tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
-    info!("1");
 
     let pools: HashMap<String, Pool> = APP_CONFIG
         .modbus
@@ -94,6 +71,8 @@ async fn main() -> std::io::Result<()> {
         .collect();
     let server_url = &*APP_CONFIG.server.address;
     info!("1");
+    info!(name: "my-event", target: "my-target", "hello from {}. My price is {}", "apple", 1.99);
+    let tracer_provider = init_traces().unwrap();
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(pools.clone()))
@@ -104,8 +83,7 @@ async fn main() -> std::io::Result<()> {
     .bind(server_url)?
     .run()
     .await?;
-    tracer_provider.shutdown().unwrap();
-    meter_provider.shutdown().unwrap();
+    global::set_tracer_provider(tracer_provider);
     logger_provider.shutdown().unwrap();
     Ok(())
 }
