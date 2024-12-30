@@ -8,7 +8,7 @@ use actix_web::middleware::from_fn;
 use actix_web::{middleware, web, App, HttpServer};
 use app_config::{load_config, AppConfig};
 use futures_util::FutureExt as _;
-use modbus_manager::{ModbusContext, Pool};
+use modbus_manager::{ModbusManager, Pool};
 use opentelemetry::global;
 use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
 use opentelemetry_sdk::logs::LoggerProvider;
@@ -39,7 +39,7 @@ async fn main() -> std::io::Result<()> {
         .configs
         .iter()
         .map(|config| {
-            let mgr = ModbusContext {
+            let mgr = ModbusManager {
                 addr: config.address.to_string(),
                 slave: config.slave_id,
             };
@@ -52,17 +52,18 @@ async fn main() -> std::io::Result<()> {
     let tracer_provider = init_traces().unwrap();
     HttpServer::new(move || {
         App::new()
+            .wrap(middleware::Logger::default())
+            .wrap(from_fn(trace_middleware))
             .app_data(web::Data::new(pools.clone()))
             .service(greet)
             .service(get_modbus_value)
-            .wrap(middleware::Logger::default())
-            .wrap(from_fn(trace_middleware))
     })
     .bind(server_url)?
     .run()
     .await?;
-    global::set_tracer_provider(tracer_provider);
+    // global::set_tracer_provider(tracer_provider);
     logger_provider.shutdown().unwrap();
+    opentelemetry::global::shutdown_tracer_provider();
     Ok(())
 }
 fn init_log() -> Result<LoggerProvider, Error> {
@@ -76,7 +77,14 @@ fn init_log() -> Result<LoggerProvider, Error> {
         .add_directive("reqwest=off".parse().unwrap());
     let otel_layer = otel_layer.with_filter(filter_otel);
 
-    let filter_fmt = EnvFilter::new("info").add_directive("opentelemetry=debug".parse().unwrap());
+    let filter_fmt = EnvFilter::new("debug")
+        .add_directive("opentelemetry=debug".parse().unwrap())
+        .add_directive("hyper=off".parse().unwrap())
+        .add_directive("opentelemetry=off".parse().unwrap())
+        .add_directive("tonic=off".parse().unwrap())
+        .add_directive("h2=off".parse().unwrap())
+        .add_directive("reqwest=off".parse().unwrap())
+        .add_directive("tower=off".parse().unwrap());
     let fmt_layer = tracing_subscriber::fmt::layer()
         .with_thread_names(true)
         .with_filter(filter_fmt);
@@ -94,5 +102,6 @@ fn init_log() -> Result<LoggerProvider, Error> {
         .with(fmt_layer)
         .with(file_layer)
         .init();
+
     Ok(logger_provider)
 }

@@ -4,6 +4,7 @@ name = "modbus"
 version = "0.1.0"
 
 [dependencies]
+tokio = "1.42.0"
 actix-web = "4.9.0"
 config = { version = "0.15.4", features = ["toml"] }
 deadpool = { version = "0.12.1", default-features = false, features = ["managed"] }
@@ -13,7 +14,7 @@ tracing = { version = "0.1.41", features = ["std"] }
 tracing-appender = "0.2.3"
 tracing-subscriber = { version = "0.3.19", features = ["registry", "std", "env-filter"] }
 futures-util = "0.3.31"
-opentelemetry = "0.27.0"
+opentelemetry = "0.27.1"
 opentelemetry-otlp = { version = "0.27.0" }
 # actix-web-opentelemetry = { version = "0.19.0" } #支持的actix-web和opentelemetry版本太低不能发送trace
 opentelemetry-appender-tracing = "0.27.0"
