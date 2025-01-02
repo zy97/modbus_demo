@@ -19,6 +19,7 @@ use std::fmt::Error;
 use std::{collections::HashMap, sync::LazyLock};
 use trace_middleware::trace_middleware;
 use tracing::{debug, info};
+use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::fmt;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::prelude::*;
@@ -29,11 +30,19 @@ static APP_CONFIG: LazyLock<AppConfig> = LazyLock::new(|| {
     config
 });
 
-#[actix_web::main] // or #[tokio::main]
+fn env_filter(filter: EnvFilter) -> EnvFilter {
+    filter
+        .add_directive("opentelemetry=debug".parse().unwrap())
+        .add_directive("hyper=off".parse().unwrap())
+        .add_directive("opentelemetry=off".parse().unwrap())
+        .add_directive("tonic=off".parse().unwrap())
+        .add_directive("h2=off".parse().unwrap())
+        .add_directive("reqwest=off".parse().unwrap())
+        .add_directive("tower=off".parse().unwrap())
+}
+#[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    global::set_text_map_propagator(TraceContextPropagator::new());
-    global::set_tracer_provider(init_traces().unwrap());
-    let logger_provider = init_log().unwrap();
+    let (logger_provider, _guard) = init_log().unwrap();
     let pools: HashMap<String, Pool> = APP_CONFIG
         .modbus
         .configs
@@ -63,45 +72,36 @@ async fn main() -> std::io::Result<()> {
     .await?;
     // global::set_tracer_provider(tracer_provider);
     logger_provider.shutdown().unwrap();
+
     opentelemetry::global::shutdown_tracer_provider();
     Ok(())
 }
-fn init_log() -> Result<LoggerProvider, Error> {
-    let logger_provider: opentelemetry_sdk::logs::LoggerProvider = init_logs().unwrap();
-    let otel_layer = OpenTelemetryTracingBridge::new(&logger_provider);
-    let filter_otel = EnvFilter::new("info")
-        .add_directive("hyper=off".parse().unwrap())
-        .add_directive("opentelemetry=off".parse().unwrap())
-        .add_directive("tonic=off".parse().unwrap())
-        .add_directive("h2=off".parse().unwrap())
-        .add_directive("reqwest=off".parse().unwrap());
-    let otel_layer = otel_layer.with_filter(filter_otel);
 
-    let filter_fmt = EnvFilter::new("debug")
-        .add_directive("opentelemetry=debug".parse().unwrap())
-        .add_directive("hyper=off".parse().unwrap())
-        .add_directive("opentelemetry=off".parse().unwrap())
-        .add_directive("tonic=off".parse().unwrap())
-        .add_directive("h2=off".parse().unwrap())
-        .add_directive("reqwest=off".parse().unwrap())
-        .add_directive("tower=off".parse().unwrap());
+fn init_log() -> Result<(opentelemetry_sdk::logs::LoggerProvider, WorkerGuard), String> {
+    global::set_text_map_propagator(TraceContextPropagator::new());
+    global::set_tracer_provider(init_traces().unwrap());
+
+    let logger_provider: opentelemetry_sdk::logs::LoggerProvider = init_logs().unwrap();
+    let otel_layer = OpenTelemetryTracingBridge::new(&logger_provider)
+        .with_filter(env_filter(EnvFilter::new("debug")));
+
     let fmt_layer = tracing_subscriber::fmt::layer()
         .with_thread_names(true)
-        .with_filter(filter_fmt);
+        .with_filter(env_filter(EnvFilter::new("debug")));
 
     let file_appender = tracing_appender::rolling::daily("logs", "app.log");
     let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
     // 创建一个文件输出层
     let file_layer = fmt::layer()
+        .with_thread_names(true)
         .with_ansi(false)
         .with_writer(non_blocking)
-        .with_filter(EnvFilter::new("info"));
+        .with_filter(env_filter(EnvFilter::new("debug")));
 
     tracing_subscriber::registry()
         .with(otel_layer)
         .with(fmt_layer)
         .with(file_layer)
         .init();
-
-    Ok(logger_provider)
+    Ok((logger_provider, _guard))
 }
