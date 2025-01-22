@@ -10,6 +10,7 @@ pub struct ModbusManager {
     pub addr: String,
     pub slave: u8,
 }
+#[derive(Debug)]
 pub struct Modbus {
     pub addr: String,
     pub slave: u8,

@@ -17,7 +17,7 @@ use tracing::{error, info};
 async fn greet(name: web::Path<String>) -> impl Responder {
     format!("Hello {name}!")
 }
-
+// #[tracing::instrument] //加上这个，就trace里就没有我自己记录的事件了，变成了其他库的事件
 #[get("/modbus/{name}")]
 pub async fn get_modbus_value(
     name: web::Path<String>,

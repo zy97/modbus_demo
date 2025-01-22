@@ -19,7 +19,7 @@ use opentelemetry_sdk::{
     propagation::TraceContextPropagator, runtime::TokioCurrentThread, trace::Config, Resource,
 };
 use opentelemetry_semantic_conventions::resource;
-use otlp::{init_logs, init_traces};
+use otlp::{init_logs, init_traces, SERVICE_NAME};
 use server_router::{get_modbus_value, greet};
 use std::fmt::Error;
 use std::{collections::HashMap, sync::LazyLock};
@@ -88,7 +88,7 @@ async fn main() -> std::io::Result<()> {
 const APP_NAME: &str = "tracing-actix-web-demo";
 fn init_log() -> Result<(opentelemetry_sdk::logs::LoggerProvider, WorkerGuard), String> {
     global::set_text_map_propagator(TraceContextPropagator::new());
-    let tracer = init_traces().unwrap().tracer("a");
+    let tracer = init_traces().unwrap().tracer(APP_NAME);
     // global::set_tracer_provider(init_traces().unwrap());
     // let env_filter = EnvFilter::try_from_default_env().unwrap_or(EnvFilter::new("info"));
     let telemetry = tracing_opentelemetry::layer().with_tracer(tracer);
