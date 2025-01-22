@@ -4,18 +4,31 @@ name = "modbus"
 version = "0.1.0"
 
 [dependencies]
-tokio = "1.42.0"
+tokio = "1.43.0"
 actix-web = "4.9.0"
 config = { version = "0.15.4", features = ["toml"] }
-deadpool = { version = "0.12.1", default-features = false, features = ["managed"] }
+deadpool = { version = "0.12.1", default-features = false, features = [
+    "managed",
+] }
 serde = { version = "1.0.216", features = ["derive"] }
-tokio-modbus = { version = "0.16.1", default-features = false, features = ["tcp"] }
-tracing = { version = "0.1.41", features = ["std"] }
+tokio-modbus = { version = "0.16.1", default-features = false, features = [
+    "tcp",
+] }
+tracing = { version = "0.1.41" }
 tracing-appender = "0.2.3"
-tracing-subscriber = { version = "0.3.19", features = ["registry", "std", "env-filter"] }
+tracing-subscriber = { version = "0.3.19", features = [
+    "registry",
+    "env-filter",
+] }
 futures-util = "0.3.31"
 opentelemetry = "0.27.1"
 opentelemetry-otlp = { version = "0.27.0" }
 # actix-web-opentelemetry = { version = "0.19.0" } #支持的actix-web和opentelemetry版本太低不能发送trace
 opentelemetry-appender-tracing = "0.27.0"
-opentelemetry_sdk = { version = "0.27.0", features = ["rt-tokio-current-thread"] }
+opentelemetry_sdk = { version = "0.27.0", features = [
+    "rt-tokio-current-thread",
+] }
+tracing-actix-web = { version = "0.7.15", features = ["opentelemetry_0_27"] }
+tracing-bunyan-formatter = "0.3"
+tracing-opentelemetry = "0.28"
+opentelemetry-semantic-conventions = "0.27"

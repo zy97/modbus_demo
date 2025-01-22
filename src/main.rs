@@ -9,21 +9,29 @@ use actix_web::{middleware, web, App, HttpServer};
 use app_config::{load_config, AppConfig};
 use futures_util::FutureExt as _;
 use modbus_manager::{ModbusManager, Pool};
-use opentelemetry::global;
+use opentelemetry::global::{self, ObjectSafeTracerProvider};
+use opentelemetry::trace::TracerProvider;
+use opentelemetry::KeyValue;
 use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
+use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::logs::LoggerProvider;
-use opentelemetry_sdk::propagation::TraceContextPropagator;
+use opentelemetry_sdk::{
+    propagation::TraceContextPropagator, runtime::TokioCurrentThread, trace::Config, Resource,
+};
+use opentelemetry_semantic_conventions::resource;
 use otlp::{init_logs, init_traces};
 use server_router::{get_modbus_value, greet};
 use std::fmt::Error;
 use std::{collections::HashMap, sync::LazyLock};
 use trace_middleware::trace_middleware;
 use tracing::{debug, info};
+use tracing_actix_web::TracingLogger;
 use tracing_appender::non_blocking::WorkerGuard;
+use tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer};
 use tracing_subscriber::fmt;
-use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::prelude::*;
-use tracing_subscriber::EnvFilter;
+use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Registry};
+
 static APP_CONFIG: LazyLock<AppConfig> = LazyLock::new(|| {
     let config = load_config().unwrap();
     debug!("加载配置成功：{:#?}", config);
@@ -62,7 +70,8 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(move || {
         App::new()
             .wrap(middleware::Logger::default())
-            .wrap(from_fn(trace_middleware))
+            // .wrap(from_fn(trace_middleware))
+            .wrap(TracingLogger::default())
             .app_data(web::Data::new(pools.clone()))
             .service(greet)
             .service(get_modbus_value)
@@ -76,10 +85,20 @@ async fn main() -> std::io::Result<()> {
     opentelemetry::global::shutdown_tracer_provider();
     Ok(())
 }
-
+const APP_NAME: &str = "tracing-actix-web-demo";
 fn init_log() -> Result<(opentelemetry_sdk::logs::LoggerProvider, WorkerGuard), String> {
     global::set_text_map_propagator(TraceContextPropagator::new());
-    global::set_tracer_provider(init_traces().unwrap());
+    let tracer = init_traces().unwrap().tracer("a");
+    // global::set_tracer_provider(init_traces().unwrap());
+    // let env_filter = EnvFilter::try_from_default_env().unwrap_or(EnvFilter::new("info"));
+    let telemetry = tracing_opentelemetry::layer().with_tracer(tracer);
+    let formatting_layer = BunyanFormattingLayer::new(APP_NAME.into(), std::io::stdout);
+
+    // let subscriber = Registry::default()
+    //     .with(env_filter)
+    //     .with(telemetry)
+    //     .with(JsonStorageLayer)
+    //     .with(formatting_layer);
 
     let logger_provider: opentelemetry_sdk::logs::LoggerProvider = init_logs().unwrap();
     let otel_layer = OpenTelemetryTracingBridge::new(&logger_provider)
@@ -102,6 +121,10 @@ fn init_log() -> Result<(opentelemetry_sdk::logs::LoggerProvider, WorkerGuard), 
         .with(otel_layer)
         .with(fmt_layer)
         .with(file_layer)
+        .with(env_filter(EnvFilter::new("debug")))
+        .with(telemetry)
+        .with(JsonStorageLayer)
+        .with(formatting_layer)
         .init();
     Ok((logger_provider, _guard))
 }
